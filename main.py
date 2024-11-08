@@ -1,54 +1,94 @@
-from flask import Flask, request
-from flask_restful import Api, Resource, reqparse, abort
+from flask import Flask
+from flask_restful import Api, Resource, reqparse, fields, marshal_with, abort
+from flask_sqlalchemy import SQLAlchemy
 
 app = Flask(__name__)
 api = Api(app)
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///database.db'
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
-names = {"tim": {"age": 19, "gender": "Male"},
-         "joe": {"age": 20, "gender": "Female"}
-         }
+db = SQLAlchemy(app)
 
-user_put_args = reqparse.RequestParser()
-user_put_args.add_argument("name", type=str, help="Input for name is missing", required=True)
-user_put_args.add_argument("age", type=int, help="Input for age is missing", required=True)
+class UserModel(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(80), nullable=False)
+    age = db.Column(db.Integer, nullable=False)
 
-users = {}
+    def __repr__(self):
+        return f"User (id = {self.id}, name = {self.name}, age = {self.age})"
 
-def cancel_if_user_does_not_exist(userid):
-    if userid not in users:
-        abort(404, message=f"User with ID {userid} does not exist")
+app.app_context().push()
+#db.create_all()
 
-def cancel_if_user_exist(userid):
-    if userid in users:
-        abort(409, message=f"User with ID {userid} already exists")
+user_post_args = reqparse.RequestParser()
+user_post_args.add_argument("name", type=str, help="Input for name is missing", required=True)
+user_post_args.add_argument("age", type=int, help="Input for age is missing", required=True)
+
+user_patch_args = reqparse.RequestParser()
+user_patch_args.add_argument("name", type=str)
+user_patch_args.add_argument("age", type=int)
+
+
+resource_fields = {
+    'id': fields.Integer,
+    'name': fields.String,
+    'age': fields.Integer
+}
+
+class Users(Resource):
+    @marshal_with(resource_fields)
+    def get(self):
+        result = UserModel.query.all()
+        return result
+
+    @marshal_with(resource_fields)
+    def post(self):
+        args = user_post_args.parse_args()
+        # result = UserModel.query.filter_by(id=userid).first()
+        # if result:
+        #     abort(409, message="User already exists")
+
+        user = UserModel(name=args['name'], age=args['age'])
+        db.session.add(user)
+        db.session.commit()
+        return user, 201
 
 class User(Resource):
+    @marshal_with(resource_fields)
     def get(self, userid):
-        cancel_if_user_does_not_exist(userid)
-        return users[userid]
+        result = UserModel.query.filter_by(id=userid).first()
+        if not result:
+            abort(404, message="User not found")
+        return result
 
-    def put(self, userid):
-        cancel_if_user_exist(userid)
-        args = user_put_args.parse_args()
-        users[userid] = args
-        return users[userid], 201
+    @marshal_with(resource_fields)
+    def patch(self, userid):
+        args = user_patch_args.parse_args()
+        result = UserModel.query.filter_by(id=userid).first()
+        if not result:
+            abort(404, message="User not found: can't update")
 
+        if args['name']:
+            result.name = args['name']
+        if args['age']:
+            result.age = args['age']
+
+        db.session.commit()
+        return result, 200
+
+    @marshal_with(resource_fields)
     def delete(self, userid):
-        cancel_if_user_does_not_exist(userid)
-        del users[userid]
-        return "", 204
+        result = UserModel.query.filter_by(id=userid).first()
+        if not result:
+            abort(404, message="User not found: can't delete")
+        db.session.delete(result)
+        db.session.commit()
+        return " ", 204
 
 
+api.add_resource(Users, '/users', methods=['GET', 'POST'])
+api.add_resource(User, '/users/<int:userid>', methods=['GET', 'DELETE', 'PATCH'])
 
-class HelloWorld(Resource):
-    def get(self, name):
-        return names[name]
-
-    def post(self):
-        return {'result': 'post method OK'}
-
-api.add_resource(User, '/users/<int:userid>')
-api.add_resource(HelloWorld, '/hello/<string:name>')
 
 if __name__ == "__main__":
     app.run(debug=True)

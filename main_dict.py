@@ -4,9 +4,7 @@ from flask_restful import Api, Resource, reqparse, abort
 app = Flask(__name__)
 api = Api(app)
 
-names = {"tim": {"age": 19, "gender": "Male"},
-         "joe": {"age": 20, "gender": "Female"}
-         }
+
 
 user_put_args = reqparse.RequestParser()
 user_put_args.add_argument("name", type=str, help="Input for name is missing", required=True)
@@ -38,17 +36,20 @@ class User(Resource):
         del users[userid]
         return "", 204
 
+class Users(Resource):
+    def get(self):
+        return users
 
+# class HelloWorld(Resource):
+#     def get(self, name):
+#         return names[name]
+#
+#     def post(self):
+#         return {'result': 'post method OK'}
 
-class HelloWorld(Resource):
-    def get(self, name):
-        return names[name]
-
-    def post(self):
-        return {'result': 'post method OK'}
-
+api.add_resource(Users, '/users')
 api.add_resource(User, '/users/<int:userid>')
-api.add_resource(HelloWorld, '/hello/<string:name>')
+# api.add_resource(HelloWorld, '/hello/<string:name>')
 
 if __name__ == "__main__":
     app.run(debug=True)
